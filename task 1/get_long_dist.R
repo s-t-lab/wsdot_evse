@@ -68,9 +68,9 @@ foreach(row=1:nrow(all_trips), .options.snow=opts, .noexport="main_con", .packag
       FROM sp_od2(',all_trips$origin[row],', ',all_trips$destination[row],') AS sq)
       ON CONFLICT (md5(geom::TEXT))
       DO UPDATE
-      SET trip_count = trip_infeasibility_combo_wsdot.trip_count + EXCLUDED.trip_count,
-          bev_count = trip_infeasibility_combo_wsdot.bev_count + EXCLUDED.bev_count,
-          od_pairs = trip_infeasibility_combo_wsdot.od_pairs || \', \' || EXCLUDED.od_pairs;'
+      SET trip_count = od_sp_geom_wsdot.trip_count + EXCLUDED.trip_count,
+          bev_count = od_sp_geom_wsdot.bev_count + EXCLUDED.bev_count,
+          od_pairs = od_sp_geom_wsdot.od_pairs || \', \' || EXCLUDED.od_pairs;'
     )
   rs = dbSendQuery(main_con, insert_query)
   dbClearResult(rs)
