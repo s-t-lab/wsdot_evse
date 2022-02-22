@@ -13,6 +13,9 @@ main_con = dbConnect(
   port = Sys.getenv("MAIN_PORT")
 )
 
+# Maximum miles between stations
+station_spacing = 75
+
 # Get only unique OD/DO combos
 all_trips <- DBI::dbGetQuery(main_con,
                              "SELECT *
@@ -82,7 +85,7 @@ foreach(row=1:nrow(all_trips), .options.snow=opts, .noexport="main_con", .packag
              FROM sp_od2(',all_trips$origin[row],', ',all_trips$destination[row],') AS line,
                   -- Get the points of existing evse infrastructure
                   (SELECT ST_Setsrid(st_makepoint(longitude, latitude), 4326) AS points
-                  FROM built_evse
+                  FROM built_evse_wsdot
                   WHERE connector_code = 2 OR connector_code = 3) AS sq
             -- Limit existing infrastructure within 10 miles from the line
              WHERE st_dwithin(line, sq.points, .24)
@@ -94,8 +97,8 @@ foreach(row=1:nrow(all_trips), .options.snow=opts, .noexport="main_con", .packag
              ORDER BY ratio ASC
              ) AS sq2
         ) AS sq3
-        -- Limit to spacings over 50 miles
-        WHERE (spacings > 50))
+        -- Limit to spacings over X miles
+        WHERE (spacings > ',station_spacing,'))
         ON CONFLICT (md5(geom::TEXT))
         DO UPDATE
         SET trip_count = trip_infeasibility_combo_wsdot.trip_count + EXCLUDED.trip_count,
@@ -108,6 +111,8 @@ foreach(row=1:nrow(all_trips), .options.snow=opts, .noexport="main_con", .packag
 close(pb)
 stopCluster(cl)
 dbDisconnect(main_con)
+# Now go to locate candidates R script to select candidates
+
 
 
 # UPDATE Candidates
@@ -134,11 +139,11 @@ foreach(row=1:nrow(all_trips), .options.snow=opts, .noexport="main_con", .packag
              FROM sp_od2(',all_trips$origin[row],', ',all_trips$destination[row],') AS line,
                   -- Get the points of existing evse infrastructure, and additional candidate sites
                   (SELECT ST_Setsrid(st_makepoint(longitude, latitude), 4326) AS points
-                  FROM built_evse
+                  FROM built_evse_wsdot
                   WHERE connector_code = 2 OR connector_code = 3
                   UNION ALL
                   SELECT geom AS points
-                  FROM combo_candidates_final_wsdot) AS sq
+                  FROM combo_candidates_automatic_wsdot) AS sq
             -- Limit existing infrastructure within 10 miles from the line
              WHERE st_dwithin(line, sq.points, .24)
              UNION
@@ -149,8 +154,8 @@ foreach(row=1:nrow(all_trips), .options.snow=opts, .noexport="main_con", .packag
              ORDER BY ratio ASC
              ) AS sq2
         ) AS sq3
-        -- Limit to spacings over 50 miles
-        WHERE (spacings > 50))
+        -- Limit to spacings over X miles
+        WHERE (spacings > ',station_spacing,'))
         ON CONFLICT (md5(geom::TEXT))
         DO UPDATE
         SET trip_count = trip_infeasibility_combo_after_wsdot.trip_count + EXCLUDED.trip_count,
@@ -190,14 +195,14 @@ foreach(row=1:nrow(all_trips), .options.snow=opts, .noexport="main_con", .packag
              FROM sp_od2(',all_trips$origin[row],', ',all_trips$destination[row],') AS line,
                   -- Get the points of existing evse infrastructure, and additional candidate sites
                   (SELECT ST_Setsrid(st_makepoint(longitude, latitude), 4326) AS points
-                  FROM built_evse
+                  FROM built_evse_wsdot
                   WHERE connector_code = 2 OR connector_code = 3
                   UNION ALL
                   SELECT geom AS points
-                  FROM combo_candidates_final_wsdot
+                  FROM combo_candidates_automatic_wsdot
                   UNION ALL
                   SELECT geom AS points
-                  FROM added_sites) AS sq
+                  FROM added_sites_wsdot) AS sq
             -- Limit existing infrastructure within 10 miles from the line
              WHERE st_dwithin(line, sq.points, .24)
              UNION
@@ -208,8 +213,8 @@ foreach(row=1:nrow(all_trips), .options.snow=opts, .noexport="main_con", .packag
              ORDER BY ratio ASC
              ) AS sq2
         ) AS sq3
-        -- Limit to spacings over 50 miles
-        WHERE (spacings > 50))
+        -- Limit to spacings over X miles
+        WHERE (spacings > ',station_spacing,'))
         ON CONFLICT (md5(geom::TEXT))
         DO UPDATE
         SET trip_count = trip_infeasibility_combo_after_add_wsdot.trip_count + EXCLUDED.trip_count,
@@ -249,10 +254,10 @@ foreach(row=1:nrow(all_trips), .options.snow=opts, .noexport="main_con", .packag
              FROM sp_od2(',all_trips$origin[row],', ',all_trips$destination[row],') AS line,
                   -- Get the points of candidate sites
                   (SELECT geom AS points
-                  FROM combo_candidates_final_wsdot
+                  FROM combo_candidates_automatic_wsdot
                   UNION ALL
                   SELECT geom AS points
-                  FROM added_sites) AS sq
+                  FROM added_sites_wsdot) AS sq
             -- Limit existing infrastructure within 10 miles from the line
              WHERE st_dwithin(line, sq.points, .24)
              UNION
@@ -263,8 +268,8 @@ foreach(row=1:nrow(all_trips), .options.snow=opts, .noexport="main_con", .packag
              ORDER BY ratio ASC
              ) AS sq2
         ) AS sq3
-        -- Limit to spacings over 50 miles
-        WHERE (spacings > 50))
+        -- Limit to spacings over X miles
+        WHERE (spacings > ',station_spacing,'))
         ON CONFLICT (md5(geom::TEXT))
         DO UPDATE
         SET trip_count = trip_infeasibility_combo_existing_wsdot.trip_count + EXCLUDED.trip_count,
@@ -277,6 +282,7 @@ foreach(row=1:nrow(all_trips), .options.snow=opts, .noexport="main_con", .packag
 close(pb)
 stopCluster(cl)
 dbDisconnect(main_con)
+# Now go to locate candidates R script to select upgrades
 
 
 
@@ -304,13 +310,13 @@ foreach(row=1:nrow(all_trips), .options.snow=opts, .noexport="main_con", .packag
              FROM sp_od2(',all_trips$origin[row],', ',all_trips$destination[row],') AS line,
                   -- Get the points of candidate sites
                   (SELECT geom AS points
-                  FROM combo_upgrades_final_wsdot
+                  FROM combo_upgrades_automatic_wsdot
                   UNION ALL
                   SELECT geom AS points
-                  FROM combo_candidates_final_wsdot
+                  FROM combo_candidates_automatic_wsdot
                   UNION ALL
                   SELECT geom AS points
-                  FROM added_sites) AS sq
+                  FROM added_sites_wsdot) AS sq
             -- Limit existing infrastructure within 10 miles from the line
              WHERE st_dwithin(line, sq.points, .24)
              UNION
@@ -321,8 +327,8 @@ foreach(row=1:nrow(all_trips), .options.snow=opts, .noexport="main_con", .packag
              ORDER BY ratio ASC
              ) AS sq2
         ) AS sq3
-        -- Limit to spacings over 50 miles
-        WHERE (spacings > 50))
+        -- Limit to spacings over X miles
+        WHERE (spacings > ',station_spacing,'))
         ON CONFLICT (md5(geom::TEXT))
         DO UPDATE
         SET trip_count = trip_infeasibility_combo_existing_after_wsdot.trip_count + EXCLUDED.trip_count,
@@ -362,16 +368,16 @@ foreach(row=1:nrow(all_trips), .options.snow=opts, .noexport="main_con", .packag
              FROM sp_od2(',all_trips$origin[row],', ',all_trips$destination[row],') AS line,
                   -- Get the points of candidate sites
                   (SELECT geom AS points
-                  FROM combo_upgrades_final_wsdot
+                  FROM combo_upgrades_automatic_wsdot
                   UNION ALL
                   SELECT geom AS points
-                  FROM added_upgrades
+                  FROM added_upgrades_wsdot
                   UNION ALL
                   SELECT geom AS points
-                  FROM combo_candidates_final_wsdot
+                  FROM combo_candidates_automatic_wsdot
                   UNION ALL
                   SELECT geom AS points
-                  FROM added_sites) AS sq
+                  FROM added_sites_wsdot) AS sq
             -- Limit existing infrastructure within 10 miles from the line
              WHERE st_dwithin(line, sq.points, .24)
              UNION
@@ -382,8 +388,8 @@ foreach(row=1:nrow(all_trips), .options.snow=opts, .noexport="main_con", .packag
              ORDER BY ratio ASC
              ) AS sq2
         ) AS sq3
-        -- Limit to spacings over 50 miles
-        WHERE (spacings > 50))
+        -- Limit to spacings over X miles
+        WHERE (spacings > ',station_spacing,'))
         ON CONFLICT (md5(geom::TEXT))
         DO UPDATE
         SET trip_count = trip_infeasibility_combo_existing_after_add_wsdot.trip_count + EXCLUDED.trip_count,

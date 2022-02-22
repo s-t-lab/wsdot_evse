@@ -66,7 +66,7 @@ FROM
  		combo_upgrades_clustered_wsdot.dist_bin,
  		combo_upgrades_clustered_wsdot.dist_to_desired,
  		combo_upgrades_clustered_wsdot.geom,
-		ROW_NUMBER() OVER (PARTITION BY cluster_id ORDER BY cid_count DESC) AS rank
+		ROW_NUMBER() OVER (PARTITION BY cluster_id ORDER BY cid_counts.cid_count DESC) AS rank
 FROM combo_upgrades_clustered_wsdot
 JOIN
 (SELECT COUNT(*) AS cid_count, cid

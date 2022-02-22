@@ -11,16 +11,21 @@ main_con = dbConnect(
   port = Sys.getenv("MAIN_PORT")
 )
 
-# Bins for spacing; 50 mile increment, last is minimum length considered
+# Maximum miles between stations
+station_spacing = 75
+
+# Bins for spacing; X mile increment, last is minimum length considered
 all_vals = c(500,450,400,350,300,250,200,150,100,0)
+all_vals = seq(0,500,station_spacing)
+all_vals = rev(all_vals[-(len(all_vals)-1)])
 
 # Upload ideal candidate sites for each spacing
 for (i in 1:(length(all_vals)-1)) {
-  num_stations = as.integer(all_vals[i] /50)-1
-  station_spacing = 1/(num_stations+1)
-  current_spacing = 0
+  num_stations = as.integer(all_vals[i] / station_spacing)-1
+  station_line_spacing = 1/(num_stations+1)
+  current_line_spacing = 0
   for (j in 1:num_stations) {
-    current_spacing = current_spacing + station_spacing
+    current_spacing = current_line_spacing + station_line_spacing
     insert_query =
       paste0(
         'INSERT INTO combo_candidates_wsdot (gid,trip_count,bev_count,cid,type,geom,length,dist_bin,dist_to_desired,rank)
@@ -34,8 +39,8 @@ for (i in 1:(length(all_vals)-1)) {
             candidates.geom,
             segments.length,
             ',all_vals[i],' AS dist_bin,
-            ABS(candidates.ratio - ',current_spacing,') AS dist_to_desired,
-            ROW_NUMBER() OVER (PARTITION BY segments.gid ORDER BY ABS(candidates.ratio - ',current_spacing,') ASC) AS rank
+            ABS(candidates.ratio - ',current_line_spacing,') AS dist_to_desired,
+            ROW_NUMBER() OVER (PARTITION BY segments.gid ORDER BY ABS(candidates.ratio - ',current_line_spacing,') ASC) AS rank
             FROM trip_infeasibility_combo_wsdot AS segments
             CROSS JOIN LATERAL
             (SELECT id,
@@ -54,14 +59,16 @@ for (i in 1:(length(all_vals)-1)) {
   }
 }
 dbDisconnect(main_con)
+# Now go to SQL script to cluster sites
+
 
 # Upload ideal upgrade sites for each spacing
 for (i in 1:(length(all_vals)-1)) {
-  num_stations = as.integer(all_vals[i] /50)-1
-  station_spacing = 1/(num_stations+1)
-  current_spacing = 0
+  num_stations = as.integer(all_vals[i] /station_spacing)-1
+  station_line_spacing = 1/(num_stations+1)
+  current_line_spacing = 0
   for (j in 1:num_stations) {
-    current_spacing = current_spacing + station_spacing
+    current_line_spacing = current_line_spacing + station_line_spacing
     insert_query =
       paste0(
         'INSERT INTO combo_upgrades_wsdot (gid,trip_count,bev_count,cid,type,geom,length,dist_bin,dist_to_desired,rank)
@@ -75,15 +82,15 @@ for (i in 1:(length(all_vals)-1)) {
             candidates.geom,
             segments.length,
             ',all_vals[i],' AS dist_bin,
-            ABS(candidates.ratio - ',current_spacing,') AS dist_to_desired,
-            ROW_NUMBER() OVER (PARTITION BY segments.gid ORDER BY ABS(candidates.ratio - ',current_spacing,') ASC) AS rank
+            ABS(candidates.ratio - ',current_line_spacing,') AS dist_to_desired,
+            ROW_NUMBER() OVER (PARTITION BY segments.gid ORDER BY ABS(candidates.ratio - ',current_line_spacing,') ASC) AS rank
             FROM trip_infeasibility_combo_existing_wsdot AS segments
             CROSS JOIN LATERAL
             (SELECT bevse_id AS id,
               ST_Setsrid(st_makepoint(longitude, latitude), 4326) AS geom,
               \'EXISTING\' AS "type",
               ST_LineLocatePoint(segments.geom, ST_Setsrid(st_makepoint(longitude, latitude), 4326)) AS ratio
-              FROM built_evse
+              FROM built_evse_wsdot
               -- Limit to infrastructure within 10 miles
               WHERE ST_DWithin(segments.geom, geom, .24) AND dcfc_count > 0 AND (connector_code = 2 OR connector_code = 3)) AS candidates) AS ranked_locations
         WHERE rank = 1 AND length <= ',all_vals[i],' AND length > ',all_vals[i+1],' 
@@ -95,3 +102,4 @@ for (i in 1:(length(all_vals)-1)) {
   }
 }
 dbDisconnect(main_con)
+# Now go to SQL script to cluster sites

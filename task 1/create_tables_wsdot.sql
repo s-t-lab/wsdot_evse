@@ -17,7 +17,6 @@ USING GIST (geom);
 
 CLUSTER trip_infeasibility_combo_wsdot USING trip_infeasibility_combo_wsdot_geom_idx;
 VACUUM ANALYZE trip_infeasibility_combo_wsdot;
-VACUUM ANALYZE all_gas_stations;
 
 
 -- Create candidate site table
