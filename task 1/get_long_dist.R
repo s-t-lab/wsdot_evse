@@ -12,6 +12,27 @@ main_con = dbConnect(
   port = Sys.getenv("MAIN_PORT")
 )
 
+insert_query <-
+  paste0(
+    '-- Create table
+    CREATE TABLE od_sp_geom_wsdot (
+      trip_count integer,
+      bev_count integer,
+      od_pairs text, 
+      gid serial primary key, 
+      geom geometry
+    );'
+  )
+rs = dbSendQuery(main_con, insert_query)
+dbClearResult(rs)
+
+insert_query <-
+  paste0(
+    'create unique index unique_geom_index_od_sp_geom_wsdot on od_sp_geom_wsdot (md5(geom::TEXT));'
+  )
+rs = dbSendQuery(main_con, insert_query)
+dbClearResult(rs)
+
 # Get only unique OD/DO combos
 all_trips <- DBI::dbGetQuery(main_con,
                              "SELECT *
@@ -77,4 +98,64 @@ foreach(row=1:nrow(all_trips), .options.snow=opts, .noexport="main_con", .packag
 }
 close(pb)
 stopCluster(cl)
+
+insert_query <-
+  paste0(
+    "WITH all_sites AS (
+    SELECT ","'","c_","'"," || ROW_NUMBER() OVER(ORDER BY cid)::text AS pid, geom AS points
+    FROM combo_candidates_automatic_wsdot
+    UNION ALL
+    SELECT ","'","u_","'"," || ROW_NUMBER() OVER(ORDER BY cid)::text AS pid, geom AS points
+    FROM combo_upgrades_automatic_wsdot
+    UNION ALL
+    SELECT ","'","c_add_","'"," || ROW_NUMBER() OVER(ORDER BY id)::text AS pid, geom AS points
+    FROM added_sites_wsdot
+    UNION ALL
+    SELECT ","'","u_add_","'"," || ROW_NUMBER() OVER(ORDER BY id)::text AS pid, geom AS points
+    FROM added_upgrades_wsdot
+    )
+    SELECT *
+      INTO all_sites_wsdot
+    FROM all_sites"
+  )
+rs = dbSendQuery(main_con, insert_query)
+dbClearResult(rs)
+
+insert_query <-
+  paste0(
+    'CREATE INDEX all_sites_wsdot_geom_idx
+    ON all_sites_wsdot
+    USING GIST (points);'
+  )
+rs = dbSendQuery(main_con, insert_query)
+dbClearResult(rs)
+
+insert_query <-
+  paste0(
+    'CREATE INDEX od_sp_wsdot_geom_idx
+    ON od_sp_geom_wsdot
+    USING GIST (geom);'
+  )
+rs = dbSendQuery(main_con, insert_query)
+dbClearResult(rs)
+
+insert_query <-
+  paste0(
+    'SELECT query1.pid AS pid, trips, bevs, num_segments, points
+    INTO long_distance_counts_wsdot
+    FROM
+    (SELECT pid, SUM(trip_count) AS trips, SUM(bev_count) AS bevs, COUNT(*) AS num_segments
+      FROM all_sites_wsdot
+      CROSS JOIN od_sp_geom_wsdot AS lines
+      WHERE ST_DWithin(points, lines.geom, .24)
+      GROUP BY pid
+    ) AS query1
+    JOIN
+    (SELECT pid, points
+      FROM all_sites_wsdot
+    ) AS query2
+    ON query1.pid = query2.pid'
+  )
+rs = dbSendQuery(main_con, insert_query)
+dbClearResult(rs)
 dbDisconnect(main_con)
