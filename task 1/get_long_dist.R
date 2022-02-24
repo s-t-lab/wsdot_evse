@@ -146,8 +146,8 @@ insert_query <-
     FROM
     (SELECT pid, SUM(trip_count) AS trips, SUM(bev_count) AS bevs, COUNT(*) AS num_segments
       FROM all_sites_wsdot
-      CROSS JOIN od_sp_geom_wsdot AS lines
-      WHERE ST_DWithin(points, lines.geom, .24)
+      JOIN od_sp_geom_wsdot AS lines
+      ON ST_DWithin(points, lines.geom, .024)
       GROUP BY pid
     ) AS query1
     JOIN
