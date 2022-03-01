@@ -51,7 +51,7 @@ Geometry of all shortest paths between zip code OD pairs and corresponding trip 
 * trip_infeasibility_combo:
 Set of tables with geometry for currently infeasible paths identified during Steps 2-5. The "_after" qualifier indicates after automatic candidates/upgrades have been added. The "_after_add" qualifier indicates after both automatic and manual candidates/upgrades have been added.
 
-* wa_bevs
+* wa_bevs:
 Registration data by zip code for EVs in Washington state.
 
 ### Project Data and Resources Used
