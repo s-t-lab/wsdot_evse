@@ -15,8 +15,8 @@ Task 1 of this Project builds from prior work on the ChargEVal electric vehicle 
 * clean_afdc_evse.ipynb: Step 1 above for existing stations.
 * gas_station: Step 1 above for candidate upgrade sites.
 * infeasible_station_analysis.R: Steps 2-4 above.
-* get_long_dist.R: Step 6 above.
-* WA Roadway Coverage Analysis: Step 7 above.
+* long_distance_analysis.R: Step 6 above.
+* Final Queueing Analysis: Step 7 above.
 
 ### Database:
 The data itself is stored in an RDS instance running Postgresql with PostGIS. It requires an access key that is not uploaded here. Duplicate tables with the qualifier "_wsdot" have been created in some cases to avoid overwriting previous ChargEVal work, and should be used. The "_combo" qualifier on all tables indicates that the entire analysis has been performed for Combo plugs only. The key tables created during the analysis are:
