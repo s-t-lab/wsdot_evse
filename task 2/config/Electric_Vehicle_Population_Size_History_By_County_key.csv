@@ -1,0 +1,11 @@
+﻿full name,api_column_name,name
+,date,time
+,county,county
+,state,state
+,vehicle_primary_use,primary_use
+,battery_electric_vehicles_bevs_,n_bev
+,plug_in_hybrid_electric_vehicles_phevs_,n_phev
+,electric_vehicle_ev_total,n_ev
+,non_electric_vehicles,n_icev
+,total_vehicles,n_total
+,percent_electric_vehicles,p_ev

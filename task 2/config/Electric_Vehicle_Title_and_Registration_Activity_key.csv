@@ -1,0 +1,31 @@
+﻿full name,api_column_name,name
+Clean Alternative Fuel Vehicle Type,electric_vehicle_type,ev_type
+VIN (1-10),vin_1_10,vin_1-10
+Model Year,model_year,model_year
+Make,make,make
+Model,model,model
+New or Used Vehicle,new_or_used_vehicle,new_used
+Sale Price,sale_price,sale_price
+DOL Transaction Date,transaction_date,trans_date
+Transaction Type,transaction_type,trans_type
+Transaction Year,transaction_year,trans_year
+Electric Vehicle Fee Paid,electric_vehicle_fee_paid,ev_fee_paid
+County,county,county
+City,city,city
+Zip,zip,zip
+Electric Range,electric_range,range
+Base MSRP,base_msrp,base_msrp
+2015 HB 2778 Exemption Eligibility,non_clean_alternative_fuel,
+Sale Date,date_of_vehicle_sale,sale_date
+Vehicle Primary Use,vehicle_primary_use,primary_use
+State of Residence,state_of_residence,state
+DOL Vehicle ID,dol_vehicle_id,dol_veh_id
+Legislative District,legislative_district,legislative_district
+2019 HB 2042 Clean Alternative Fuel Vehicle (CAFV) Eligibility,hb_2042_clean_alternative_fuel_vehicle_cafv_eligibility,
+Meets 2019 HB 2042 Electric Range Requirement,meets_2019_hb_2042_electric_range_requirement,
+Meets 2019 HB 2042 Sale Date Requirement,meets_2019_hb_2042_sale_date_requirement,
+Meets 2019 HB 2042 Sale Price/Value Requirement,meets_2019_hb_2042_sale_price_value_requirement,
+Odometer Reading,odometer_reading,
+Odometer Code,odometer_code,
+Transportation Electrification Fee Paid,transportation_electrification_fee_paid,
+Hybrid Vehicle Electrification Fee Paid,hybrid_vehicle_electrification_fee_paid,

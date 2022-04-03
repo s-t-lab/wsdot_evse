@@ -1,0 +1,9 @@
+.ipynb_checkpoints/
+__pycache__/
+keys.py
+access_keys.py
+data/*/raw/
+data/vehicles/Vehicle_Registration_Transactions_by_Department_of_Licensing.csv
+data/vehicles/Vehicle_Title_Transactions_by_Department_of_Licensing.csv
+data/vehicles/Electric_Vehicle_Title_and_Registration_Activity.csv
+data/vehicles/investigations/
