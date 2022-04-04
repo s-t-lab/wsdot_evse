@@ -6,7 +6,7 @@ A Python-based framework to compile historic EV registration in Washington state
 
 ## Workflow
 
-+ `scrape_veh_registration_data.ipynb`: download EV and other vehicle registration data from [Data.WA.gov][Data.WA.gov]
++ `scrape_veh_registration_data.ipynb`: download EV and other vehicle registration data from [Data.WA.gov](Data.WA.gov)
 + `scrape_charging_stations.ipynb`: download EV charging stations data from [NREL's Alternative Fuel Data Center](https://developer.nrel.gov/docs/transportation/alt-fuel-stations-v1/)
 + `process_EV_registration_activity.ipynb`: deduce number of currently registered EVs (BEVs and PHEVs) by ZIP code for each month since January 2017
 + `combine_data_sources.ipynb`: combine the different data sources into one dataframe
@@ -15,7 +15,7 @@ In addition, the file `explore_EV_title_and_registration_activity.ipynb` contain
 
 ## Contact
 
-The work is conducted in University of Washington's Sustainable Transportation Lab.
+The work is conducted in the University of Washington's Sustainable Transportation Lab.
 
 + Principal Investigator: Prof. Don MacKenzie (dwhm [at] uw.edu)
 + Senior Research Scientist: Daniel Malarkey (djmalark [at] uw.edu)
