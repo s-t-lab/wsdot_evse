@@ -2,6 +2,9 @@
 __pycache__/
 keys.py
 access_keys.py
+init.py
+classes.py
+main.py
 data/*/raw/
 data/vehicles/Vehicle_Registration_Transactions_by_Department_of_Licensing.csv
 data/vehicles/Vehicle_Title_Transactions_by_Department_of_Licensing.csv

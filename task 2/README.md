@@ -15,6 +15,8 @@ The IPython Notebooks (`.ipynb`) are used to download data from various sources 
 
 In addition, the file `explore_EV_title_and_registration_activity.ipynb` contains code to gain first insights into the EV registration activity data from Data.WA.gov, e.g. counts by vehicle type or transaction type, and the ability to create plots of different variables.
 
+The file `utils.py` contains helper functions needed in the `.ipynb` notebooks.
+
 ## Contact
 
 The work is conducted in the University of Washington's Sustainable Transportation Lab.
