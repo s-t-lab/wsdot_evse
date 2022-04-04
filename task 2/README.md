@@ -6,10 +6,12 @@ A Python-based framework to compile historic EV registration in Washington state
 
 ## Workflow
 
+The IPython Notebooks (`.ipynb`) are used to download data from various sources (such as vehicle registration data from [Data.WA.gov](https://data.wa.gov/) or data on EV charging stations), process this data to deduce the number of registered EVs by month and by ZIP code, and combine the different datasources into one complete dataframe (stored in `df.csv`). One can then use this datafile to build the desired model, e.g. in R.
+
 + `scrape_veh_registration_data.ipynb`: download EV and other vehicle registration data from [Data.WA.gov](https://data.wa.gov/)
 + `scrape_charging_stations.ipynb`: download EV charging stations data from [NREL's Alternative Fuel Data Center](https://developer.nrel.gov/docs/transportation/alt-fuel-stations-v1/)
-+ `process_EV_registration_activity.ipynb`: deduce number of currently registered EVs (BEVs and PHEVs) by ZIP code for each month since January 2017
-+ `combine_data_sources.ipynb`: combine the different data sources into one dataframe
++ `process_EV_registration_activity.ipynb`: deduce number of currently registered EVs (BEVs and PHEVs) by ZIP code for each month since January 2017, stored in `data/vehicles/ev_counts.csv`
++ `combine_data_sources.ipynb`: combine the different data sources into one dataframe, stored in `data/df.csv`
 
 In addition, the file `explore_EV_title_and_registration_activity.ipynb` contains code to gain first insights into the EV registration activity data from Data.WA.gov, e.g. counts by vehicle type or transaction type, and the ability to create plots of different variables.
 
