@@ -1,0 +1,16 @@
+﻿full name,name,description
+VIN (1-10),vin_1-10,The 1st 10 characters of each vehicle's Vehicle Identification Number (VIN).
+County,county,
+City,city,
+State,state,
+ZIP Code,zip_code,
+Model Year,model_year,
+Make,make,
+Model,model,
+Electric Vehicle Type,ev_type,
+Clean Alternative Fuel Vehicle (CAFV) Eligibility,cafv_eligibility,
+Electric Range,range,
+Base MSRP,base_msrp,
+Legislative District,legislative_district,
+DOL Vehicle ID,dol_veh_id,
+Vehicle Location,location,
