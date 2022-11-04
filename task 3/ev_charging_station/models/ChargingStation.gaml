@@ -8,8 +8,7 @@
 model ChargingStation
 
 // TODO:
-// Specify logic for choosing plug when not homogeneous powers
-// Draw vehicle characteristics based on data
+// Draw vehicle characteristics based on distributions from evinsider
 // Draw arrival rate based on AADT/ToD/Chargeval
 // Implement plugin delay
 
@@ -18,9 +17,10 @@ global {
 	float STATION_SPACING <- 50.0;
 	float RANGE_ANXIETY_BUFFER <- 10.0;
 	int CHARGE_PLUGIN_DELAY <- 30;
-	list<float> PLUG_POWERS <- [150.0, 150.0, 150.0, 150.0];
+	list<float> PLUG_POWERS <- [350.0, 150.0, 50.0, 50.0];
 	list<float> VEHICLE_CAPACITIES <- [50.0, 100.0, 150.0, 200.0];
-	
+
+	// Placeholder
 	float ARRIVAL_RATE <- 2 / 3600;
 
 	// Global variables modified during the simulation
@@ -59,7 +59,8 @@ global {
 species charger {
 	list<vehicle> queue;
 	list<bool> plug_availability;
-	
+
+	// Initialize plugs to be all available
 	init {
 		loop i from: 0 to: length(PLUG_POWERS)-1 {
 			plug_availability <- plug_availability + true;
@@ -77,14 +78,15 @@ species charger {
 	// Assign vehicles from queue to plugs
 	reflex serve_queue {
 		loop i over: queue {
-			// For now just serve with open plugs
-			loop j from: 0 to: length(plug_availability)-1 {
-				if (plug_availability[j]) {
-					queue <- queue - i;
-					i.incoming_charge_power <- PLUG_POWERS[j];
-					i.plug_num <- j;
-					plug_availability[j] <- false;
-					break;
+			// Returns -1 if no plugs available, otherwise give vehicle their chosen plug
+			int chosen_plug;
+			ask i {
+				chosen_plug <- choose_plug(myself.plug_availability, PLUG_POWERS);
+				if (chosen_plug >= 0 and myself.plug_availability[chosen_plug]) {
+					myself.queue <- myself.queue - i;
+					self.incoming_charge_power <- PLUG_POWERS[chosen_plug];
+					self.plug_num <- chosen_plug;
+					myself.plug_availability[chosen_plug] <- false;
 				}
 			}
 		}
@@ -127,6 +129,30 @@ species vehicle {
 			do die;
 		}
 	}
+	// Action to pick the lowest-power available plug that meets max charging rate
+	int choose_plug (list<bool> plug_availabilities, list<float> plug_powers) {
+		bool desired_power_met <- false;
+		int best_plug <- -1;
+		float best_plug_power <- 0.0;
+		// Cases: 1) No plug available that meets max power; highest. 2) 1+ plugs available that meet max power; lowest above threshold.
+		// Keep track of highest until desired power met; then keep track of lowest that meets threshold.
+		loop i from: 0 to: length(plug_availabilities)-1 {
+			if (desired_power_met) {
+				// Minimum above threshold (should never have to go back through list since bool is flagged first time charger meets max)
+				if (plug_availabilities[i] and plug_powers[i] < best_plug_power and plug_powers[i] >= self.max_charge_power) {
+					best_plug <- i;
+					best_plug_power <- plug_powers[i];
+				}
+			} else {
+				// Maximum available
+				if (plug_availabilities[i] and plug_powers[i] > best_plug_power) {
+					best_plug <- i;
+					best_plug_power <- plug_powers[i];
+				}
+			}
+		}
+		return best_plug;
+	}
 	aspect base {
 		draw circle(1) color: #red border: #black;
 	}
@@ -140,7 +166,6 @@ experiment simple_station type: gui {
 	parameter "Plugs and Power (kWh):" var: PLUG_POWERS;
 
 	output {
-//		Downtime (unutilized charging capacity)
 //		Average queue length/wait time
 //		Max queue length/wait time
 //		Total charging time
@@ -171,9 +196,15 @@ experiment simple_station type: gui {
 				data "power_consumption" value: sum(vehicle collect(each.incoming_charge_power));
 			}
 		}
+		// Utilization rate of total station power
+		display power_utilization {
+			chart "Available Power Utilized (%)" type: series {
+				data "power_utilization" value: sum(vehicle collect(each.incoming_charge_power)) / sum(PLUG_POWERS);
+			}
+		}
 		// Visual of vehicles currently being charged
 		display charge_status {
-			chart "Vehicle SOC (%)" type: series {
+			chart "Vehicle SOC (%)" type: series y_range: [0.0, 1.0] {
                 datalist vehicle collect(each.name) value: vehicle collect(each.soc) color: vehicle collect(each.color);
 			}
 		}
