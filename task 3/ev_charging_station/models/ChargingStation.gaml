@@ -8,33 +8,30 @@
 model ChargingStation
 
 // TODO:
-// Draw arrival rate based on AADT/ToD/Chargeval
-// Implement plugin delay
-// Multiplexing
-
+// Draw AADT based on Chargeval
 
 global {
 	// Input parameter defaults
+	float AADT <- 1000.0;
 	float EV_PROPORTION <- 0.10;
 	float STATION_SPACING <- 50.0;
 	float RANGE_ANXIETY_BUFFER <- 10.0;
 	int CHARGE_PLUGIN_DELAY <- 30;
-	list<float> PLUG_POWERS <- [350.0, 150.0, 50.0, 50.0];
+	list<float> PLUG_POWERS <- [350.0, 150.0, 150.0, 150.0];
 
 	// Fixed parameters
 	list<string> VEHICLE_MODELS <- ["Mach-E", "ID.4", "Bolt", "Leaf Plus", "F-150 ER", "Model-S Plaid"];
 	list<float> VEHICLE_CAPACITIES <- [99.0, 82.0, 65.0, 62.0, 145.0, 100.0];
 	list<float> VEHICLE_RANGES <- [249.2, 230.0, 233.4, 192.5, 320.0, 341.0];
+	list<float> VEHICLE_MAX_CHARGE_RATES <- [150.0, 135.0, 55.0, 46.0, 150.0, 250.0];
 	float C_RATE_INTERCEPT_COEF <- 1.49;
 	float C_RATE_INTERCEPT_SD <- 0.045;
 	float C_RATE_SOC_COEF <- -1.21;
 	float C_RATE_SOC_SD <- 0.076;
-	// Need veh/sec:
-	// LD-AADT from Chargeval
-	// Look at 
-	float ARRIVAL_RATE <- 5 / 3600; //Placeholder
 
 	// Global variables modified during the simulation
+	float arrival_rate <- 0.0;
+	int current_min <- 0;
 	int current_hour <- 0;
 	list<float> vehicle_delays <- [0.0];
 	list<float> charging_times <- [0.0];
@@ -42,6 +39,11 @@ global {
 	float peak_power_draw <- 0.0;
 	float avg_power_draw <- 0.0;
 	list<float> rolling_avg_power_draw <- [0.0];
+	
+	// Loaded from files
+	list<float> KFACTOR_TIMES;
+	list<float> KFACTORS;
+	list<float> ARRIVAL_RATES;
 
 	// Graphics constants
 	int SPACING <- 5;
@@ -55,12 +57,25 @@ global {
 			location: CHARGER_LOC,
 			name: "main_charger"
 		);
+		// Read in data files
+		file k_factors_file <- csv_file("../data/aadt/avg_kfactor.csv");
+		loop i from: 0 to: k_factors_file.contents.rows - 1 {
+			KFACTOR_TIMES <- KFACTOR_TIMES + float(k_factors_file.contents[1,i]);
+			KFACTORS <- KFACTORS + float(k_factors_file.contents[2,i]);
+			// Need veh/sec:
+			// LD-AADT (daily) from Chargeval
+			// Multiply by EV proportion of fleet (%)
+			// Multiply by 5min k factor (proportion of aadt occurring in 5min period) divided by 5*60 seconds (veh/sec)
+			ARRIVAL_RATES <- ARRIVAL_RATES + (float(k_factors_file.contents[2,i]) / (5 * 60) * AADT * EV_PROPORTION);
+		}
 	}
 	// Run every simulation step
 	reflex update {
-		// Simulation time
+		// Simulation times
+		float mins_of_sim <- (time / 60);
 		float hours_of_sim <- (time / 3600);
 		float days_of_sim <- (hours_of_sim / 24);
+		current_min <- mod(mins_of_sim, 24*60);
 		current_hour <- mod(hours_of_sim, 24);
 		// Power draw
 		float current_power_draw <- sum(vehicle collect(each.limited_charge_power));
@@ -73,15 +88,21 @@ global {
 			remove from: rolling_avg_power_draw index: 0;
 		}
 	}
+	reflex adjust_arrival_rate {
+		int kfactor_index <- int(current_min / 5);
+		arrival_rate <- ARRIVAL_RATES at kfactor_index;
+	}
 	// Create new vehicles according to long distance AADT and Time of Day
-    reflex vehicleArrival when: (flip(ARRIVAL_RATE)) {
+    reflex vehicleArrival when: (flip(arrival_rate)) {
+		write current_hour;
+    	write arrival_rate;
     	int model_rnd <- rnd(length(VEHICLE_MODELS)-1);
-    	write model_rnd;
     	create vehicle number: 1 with: (
     		in_queue: false,
     		design_model: VEHICLE_MODELS at model_rnd,
     		capacity: VEHICLE_CAPACITIES at model_rnd,
     		range: VEHICLE_RANGES at model_rnd,
+    		max_charge_rate: VEHICLE_MAX_CHARGE_RATES at model_rnd,
     		c_rate_slope: gauss({C_RATE_SOC_COEF, C_RATE_SOC_SD}),
     		c_rate_intercept: gauss({C_RATE_INTERCEPT_COEF, C_RATE_INTERCEPT_SD})
     	);
@@ -140,7 +161,7 @@ species vehicle {
 	float c_rate_intercept;
 	// Current charging status
 	float soc;
-	float max_charge_power;
+	float max_charge_rate;
 	float incoming_charge_power <- 0.0;
 	float limited_charge_power <- 0.0;
 	bool in_queue;
@@ -197,7 +218,6 @@ species vehicle {
 			if (self.time_in_system > peak_delay) {
 				peak_delay <- self.time_in_system;
 			}
-			write self.time_charging / 60.0;
 			// Leave simulation
 			do die;
 		}
@@ -210,18 +230,19 @@ species vehicle {
 		// Cases: 1) No plug available that meets max power; highest. 2) 1+ plugs available that meet max power; lowest above threshold.
 		// Keep track of highest until desired power met; then keep track of lowest that meets threshold.
 		loop i from: 0 to: length(plug_availabilities)-1 {
+			if (best_plug_power >= self.max_charge_rate) {
+				desired_power_met <- true;
+			}
 			if (desired_power_met) {
 				// Minimum above threshold (should never have to go back through list since bool is flagged first time charger meets max)
-				if (plug_availabilities[i] and plug_powers[i] < best_plug_power and plug_powers[i] >= self.max_charge_power) {
+				if (plug_availabilities[i] and plug_powers[i] < best_plug_power and plug_powers[i] >= self.max_charge_rate) {
 					best_plug <- i;
 					best_plug_power <- plug_powers[i];
 				}
-			} else {
+			} else if (plug_availabilities[i] and plug_powers[i] > best_plug_power) {
 				// Maximum available
-				if (plug_availabilities[i] and plug_powers[i] > best_plug_power) {
-					best_plug <- i;
-					best_plug_power <- plug_powers[i];
-				}
+				best_plug <- i;
+				best_plug_power <- plug_powers[i];
 			}
 		}
 		return best_plug;
@@ -233,6 +254,7 @@ species vehicle {
 
 
 experiment simple_station type: gui {
+	parameter "AADT (veh/day):" var: AADT;
 	parameter "EV Proportion of Fleet (%):" var: EV_PROPORTION;
 	parameter "Station Spacing (miles):" var: STATION_SPACING;
 	parameter "Range Anxiety Buffer (miles):" var: RANGE_ANXIETY_BUFFER;
