@@ -57,4 +57,4 @@ ggplot(data=all_data, aes(x=time, y=proportion, col=location)) +
     xlab('Minute of Day') +
     ylab('5-Minute Proportion of 2021 AADT')
 
-write.csv(avg_proportion, './data/aadt/avg_kfactor.csv')
+write.csv(avg_proportion, './data/avg_kfactor.csv')

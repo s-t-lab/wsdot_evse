@@ -5,14 +5,13 @@
 // Default units are meters and seconds
 // Default space is 100x100 grid
 
+
 model ChargingStation
 
-// TODO:
-// Draw AADT based on Chargeval
 
 global {
 	// Input parameter defaults
-	float AADT <- 1000.0;
+	float AADT <- 3500.0;
 	float EV_PROPORTION <- 0.10;
 	float STATION_SPACING <- 50.0;
 	float RANGE_ANXIETY_BUFFER <- 10.0;
@@ -28,9 +27,10 @@ global {
 	float C_RATE_INTERCEPT_SD <- 0.045;
 	float C_RATE_SOC_COEF <- -1.21;
 	float C_RATE_SOC_SD <- 0.076;
+	float STOPPING_PROPORTION <- 0.60 * STATION_SPACING / mean(VEHICLE_RANGES);
 
 	// Global variables modified during the simulation
-	float arrival_rate <- 0.0;
+	float current_arrival_rate <- 0.0;
 	int current_min <- 0;
 	int current_hour <- 0;
 	list<float> vehicle_delays <- [0.0];
@@ -39,6 +39,7 @@ global {
 	float peak_power_draw <- 0.0;
 	float avg_power_draw <- 0.0;
 	list<float> rolling_avg_power_draw <- [0.0];
+	list<float> rolling_avg_arrival_rate <- [0.0];
 	
 	// Loaded from files
 	list<float> KFACTOR_TIMES;
@@ -49,7 +50,7 @@ global {
 	int SPACING <- 5;
 	point CHARGER_LOC <- {50,50};
 	point QUEUE_LOC <- CHARGER_LOC - {5,0};
-	int ROLLING_WINDOW <- 60 * 10;
+	int ROLLING_WINDOW <- 60 * 60;
 
 	// Initialize plugs and charger
 	init {
@@ -57,8 +58,8 @@ global {
 			location: CHARGER_LOC,
 			name: "main_charger"
 		);
-		// Read in data files
-		file k_factors_file <- csv_file("../data/aadt/avg_kfactor.csv");
+		// Read in data files and construct arrival rate curves
+		file k_factors_file <- csv_file("../data/avg_kfactor.csv");
 		loop i from: 0 to: k_factors_file.contents.rows - 1 {
 			KFACTOR_TIMES <- KFACTOR_TIMES + float(k_factors_file.contents[1,i]);
 			KFACTORS <- KFACTORS + float(k_factors_file.contents[2,i]);
@@ -66,11 +67,12 @@ global {
 			// LD-AADT (daily) from Chargeval
 			// Multiply by EV proportion of fleet (%)
 			// Multiply by 5min k factor (proportion of aadt occurring in 5min period) divided by 5*60 seconds (veh/sec)
-			ARRIVAL_RATES <- ARRIVAL_RATES + (float(k_factors_file.contents[2,i]) / (5 * 60) * AADT * EV_PROPORTION);
+			// Multiply by station spacing / 20-80% range to get proportion of EVs that stop at the station
+			ARRIVAL_RATES <- ARRIVAL_RATES + (AADT * EV_PROPORTION * float(k_factors_file.contents[2,i]) / (5 * 60) * STOPPING_PROPORTION);
 		}
 	}
 	// Run every simulation step
-	reflex update {
+	reflex update_metrics {
 		// Simulation times
 		float mins_of_sim <- (time / 60);
 		float hours_of_sim <- (time / 3600);
@@ -87,15 +89,19 @@ global {
 		if (length(rolling_avg_power_draw) >= ROLLING_WINDOW) {
 			remove from: rolling_avg_power_draw index: 0;
 		}
+		// Arrival rate
+		rolling_avg_arrival_rate <- rolling_avg_arrival_rate + current_arrival_rate;
+		if (length(rolling_avg_arrival_rate) >= ROLLING_WINDOW) {
+			remove from: rolling_avg_arrival_rate index: 0;
+		}
 	}
-	reflex adjust_arrival_rate {
+	// Change the arrival rate according to k-factor curve every 5 mins
+	reflex update_arrival_rate {
 		int kfactor_index <- int(current_min / 5);
-		arrival_rate <- ARRIVAL_RATES at kfactor_index;
+		current_arrival_rate <- ARRIVAL_RATES at kfactor_index;
 	}
 	// Create new vehicles according to long distance AADT and Time of Day
-    reflex vehicleArrival when: (flip(arrival_rate)) {
-		write current_hour;
-    	write arrival_rate;
+    reflex vehicle_arrival when: (flip(current_arrival_rate)) {
     	int model_rnd <- rnd(length(VEHICLE_MODELS)-1);
     	create vehicle number: 1 with: (
     		in_queue: false,
@@ -151,7 +157,6 @@ species charger {
 		draw rectangle(5,3) color: #blue border: #black;
 	}
 }
-
 species vehicle {
 	// Vehicle attributes
 	string design_model;
@@ -192,9 +197,9 @@ species vehicle {
 		if (incoming_charge_power > 0.0) {
 			// Get max possible charge rate given the vehicle acceptance curve and current SOC
 			float c_rate <- c_rate_intercept + (c_rate_slope * soc);
-			float power_draw <- c_rate * capacity;
+			float desired_charge_power <- c_rate * capacity;
 			// Can't pull more power than is available from current plug
-			limited_charge_power <- min(power_draw, incoming_charge_power);
+			limited_charge_power <- min(desired_charge_power, incoming_charge_power);
 			// %-sec coming from charger, as a proportion of capacity which is kWh
 			soc <- soc + (limited_charge_power / (capacity * 3600));
 		}
@@ -219,6 +224,9 @@ species vehicle {
 				peak_delay <- self.time_in_system;
 			}
 			// Leave simulation
+			write self.time_in_system / 60;
+			write self.time_charging / 60;
+			write "";
 			do die;
 		}
 	}
@@ -274,6 +282,12 @@ experiment simple_station type: gui {
 		display "power_supplied" {
 			chart "Average Power Consumption (kW)" type: series {
 				data "Power Consumption" value: mean(rolling_avg_power_draw);
+			}
+		}
+		// Rolling average of arrival rate
+		display "arrival_rate" {
+			chart "Average Arrival Rate (veh/sec)" type: series {
+				data "Arrival Rate" value: mean(rolling_avg_arrival_rate);
 			}
 		}
 		// Utilization rate of total station power
