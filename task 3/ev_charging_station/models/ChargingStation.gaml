@@ -2,7 +2,7 @@
 * Name: ChargingStation
 * Author: Zack Aemmer
 */
-// Default units are meters and seconds
+// Default units are meters and minutes
 // Default space is 100x100 grid
 
 
@@ -13,15 +13,51 @@ global {
 	// Time
 	float step <- 1 #mn;
 
-	// Input parameter defaults
-	float LD_AADT <- 3500.0;
-	float EV_PROPORTION <- 0.0094;
+	// Scenario input parameter defaults
+	float LD_AADT <- 3000.0;
+	float EV_PROPORTION <- 100.0;
+	list<float> PLUG_POWERS <- [
+//		150.0, 150.0,
+//		150.0, 150.0,
+//		150.0, 150.0,
+//		150.0, 150.0,
+//		150.0, 150.0,
+//		150.0, 150.0,
+//		150.0, 150.0,
+//		150.0, 150.0,
+//		150.0, 150.0,
+//		150.0, 150.0,
+//		150.0, 150.0,
+//		150.0, 150.0,
+//		150.0, 150.0,
+//		150.0, 150.0,
+//		150.0, 150.0,
+//		150.0, 150.0,
+//		150.0, 150.0,
+//		150.0, 150.0,
+//		150.0, 150.0,
+//		150.0, 150.0,
+//		150.0, 150.0,
+//		150.0, 150.0,
+//		150.0, 150.0,
+//		150.0, 150.0,
+//		150.0, 150.0,
+//		150.0, 150.0,
+//		150.0, 150.0,
+//		150.0, 150.0,
+//		150.0, 150.0,
+//		150.0, 150.0,
+//		150.0, 150.0,
+//		150.0, 150.0,
+		150.0, 150.0
+//		150.0
+	];
+
+	// Other input parameter defaults
 	float STATION_SPACING <- 50.0;
 	float RANGE_ANXIETY_BUFFER <- 10.0;
 	float DEPARTING_SOC <- 0.80;
-	int CHARGE_PLUGIN_DELAY <- 3;
 	float TEST_CYCLE_ADJ_FACTOR <- 0.15;
-	list<float> PLUG_POWERS <- [150.0, 150.0, 150.0, 150.0];
 	list<string> VEHICLE_MODELS <- [
 		"2022 Mach-E RWD ER",
 		"2022 ID.4 Pro",
@@ -30,19 +66,22 @@ global {
 		"2022 F-150 Lightning ER",
 		"2022 Model S Plaid"
 	];
-	list<float> VEHICLE_EFFICIENCIES <- [
-		(90.0/33.7) with_precision 2,
-		(98.0/33.7) with_precision 2,
-		(109.0/33.7) with_precision 2,
-		(98.0/33.7) with_precision 2,
-		(63.0/33.7) with_precision 2,
-		(112.0/33.7) with_precision 2
-	]; // MPGe (33.7 kWh per gal)
+//  // Kept for reference, but these are sampled now:
+//	list<float> VEHICLE_EFFICIENCIES <- [
+//		(90.0/33.7) with_precision 2,
+//		(98.0/33.7) with_precision 2,
+//		(109.0/33.7) with_precision 2,
+//		(98.0/33.7) with_precision 2,
+//		(63.0/33.7) with_precision 2,
+//		(112.0/33.7) with_precision 2
+//	]; // MPGe (33.7 kWh per gal)
 	list<float> VEHICLE_RANGES <- [303.0, 275.0, 259.0, 212.0, 320.0, 396.0];
 	list<float> VEHICLE_MAX_DESIRED_CHARGE <- [150.0, 135.0, 55.0, 150.0, 150.0, 250.0];
 	list<float> VEHICLE_WEIGHTS <- [1/6, 1/6, 1/6, 1/6, 1/6, 1/6];
 	float MAX_C_RATE_SLOPE <- -2.50;
-	float MIN_C_RATE_SLOPE <- -0.75;	
+	float MIN_C_RATE_SLOPE <- -0.75;
+	float MIN_VEHICLE_EFFICIENCY <- 63.0 / 33.7;
+	float MAX_VEHICLE_EFFICIENCY <- 112.0 / 33.7;
 
 	// Global variables modified during the simulation
 	list<float> STOPPING_PROPORTIONS;
@@ -50,15 +89,25 @@ global {
 	int current_hour <- 0;
 	list<float> vehicle_delays <- [0.0];
 	list<float> charging_times <- [0.0];
+
+	// Metrics calculated per-timestep
 	// Metric: power draw
 	float current_power_draw <- 0.0;
 	list<float> rolling_avg_power_draw <- [0.0];
-	// Metric: queue delay
-	float current_queue_delay <- 0.0;
-	list<float> rolling_avg_queue_delay <- [0.0];
 	// Metric: arrival rate
 	float current_arrival_rate <- 0.0;
 	list<float> rolling_avg_arrival_rate <- [0.0];
+	// Metric: queue length
+	float current_queue_length <- 0.0;
+	list<float> rolling_avg_queue_length <- [0.0];
+
+	// Metrics calculated per-vehicle
+	// Metric: charging time
+	float current_charge_time <- 0.0;
+	list<float> rolling_avg_charge_time <- [0.0];
+	// Metric: queue delay
+	float current_queue_delay <- 0.0;
+	list<float> rolling_avg_queue_delay <- [0.0];
 
 	// To be loaded from files
 	list<float> KFACTOR_TIMES;
@@ -86,7 +135,7 @@ global {
 		loop i from: 0 to: k_factors_file.contents.rows - 1 {
 			KFACTOR_TIMES <- KFACTOR_TIMES + float(k_factors_file.contents[1,i]);
 			KFACTORS <- KFACTORS + float(k_factors_file.contents[2,i]);
-			ARRIVAL_RATES <- ARRIVAL_RATES + (LD_AADT * EV_PROPORTION * float(k_factors_file.contents[2,i]) / 5);
+			ARRIVAL_RATES <- ARRIVAL_RATES + (LD_AADT * EV_PROPORTION / 100.0 * float(k_factors_file.contents[2,i]) / 5);
 		}
 	}
 	// Run every simulation step
@@ -100,11 +149,12 @@ global {
 		// Power draw
 		current_power_draw <- sum(vehicle collect(each.limited_charge_power));
 		rolling_avg_power_draw <- rolling_avg_power_draw + current_power_draw;
-		// Queue delay
-		rolling_avg_queue_delay <- rolling_avg_queue_delay + current_queue_delay;
 		// Arrival rate
 		current_arrival_rate <- ARRIVAL_RATES at int(current_min / 5);
 		rolling_avg_arrival_rate <- rolling_avg_arrival_rate + current_arrival_rate;
+		// Queue length
+		current_queue_length <- float(min(length(vehicle.population) - length(PLUG_POWERS), 0));
+		rolling_avg_queue_length <- rolling_avg_queue_length + current_queue_length;
 	}
 	// Create new vehicles according to long distance AADT and Time of Day
     reflex vehicle_arrival {
@@ -114,7 +164,7 @@ global {
 		    		in_queue: false,
 		    		spot_in_queue: length(vehicle.population),
 		    		design_model: VEHICLE_MODELS at i,
-		    		efficiency: (VEHICLE_EFFICIENCIES at i) * (1.0 - TEST_CYCLE_ADJ_FACTOR),
+		    		efficiency: rnd(MIN_VEHICLE_EFFICIENCY, MAX_VEHICLE_EFFICIENCY) * (1.0 - TEST_CYCLE_ADJ_FACTOR),
 		    		range: VEHICLE_RANGES at i,
 		    		max_charge_rate: VEHICLE_MAX_DESIRED_CHARGE at i,
 		    		c_rate_slope: rnd(MIN_C_RATE_SLOPE, MAX_C_RATE_SLOPE)
@@ -239,8 +289,11 @@ species vehicle {
 					self.spot_in_queue <- self.spot_in_queue - 1;
 				}
 			}
-			// Update the most recent measure of queue delay
+			// Update global metrics
 			current_queue_delay <- self.time_in_system - self.time_charging;
+			rolling_avg_queue_delay <- rolling_avg_queue_delay + current_queue_delay;
+			current_charge_time <- self.time_charging;
+			rolling_avg_charge_time <- rolling_avg_charge_time + current_charge_time;
 			// Leave simulation after done charging
 			do die;
 		}
@@ -280,15 +333,22 @@ species vehicle {
 experiment "Batch Simulation" type: batch repeat: 10 keep_seed: false until: (cycle > 60 * 24) {
     reflex end_of_runs {
 	    int cpt <- 0;
+	    string save_loc <- "./batch_results_" + int(LD_AADT) + "_" + int(EV_PROPORTION);
 	    ask simulations {
 	    	loop i over: self.rolling_avg_arrival_rate {
-	    		save i to: "./batch_results/ar_sim_" + cpt + ".csv" type: text rewrite: false;
+	    		save i to: "./" + save_loc + "/time_ar_" + cpt + ".csv" type: text rewrite: false;
 	    	}
 	    	loop i over: self.rolling_avg_power_draw {
-	    		save i to: "./batch_results/pd_sim_" + cpt + ".csv" type: text rewrite: false;
+	    		save i to: "./" + save_loc + "/time_pd_" + cpt + ".csv" type: text rewrite: false;
+	    	}
+	    	loop i over: self.rolling_avg_queue_length {
+	    		save i to: "./" + save_loc + "/time_ql_" + cpt + ".csv" type: text rewrite: false;
 	    	}
 	    	loop i over: self.rolling_avg_queue_delay {
-	    		save i to: "./batch_results/qd_sim_" + cpt + ".csv" type: text rewrite: false;
+	    		save i to: "./" + save_loc + "/veh_qd_" + cpt + ".csv" type: text rewrite: false;
+	    	}
+	    	loop i over: self.rolling_avg_charge_time {
+	    		save i to: "./" + save_loc + "/veh_ct_" + cpt + ".csv" type: text rewrite: false;
 	    	}
 	        cpt <- cpt + 1;
 	    }
@@ -299,16 +359,19 @@ experiment "Batch Simulation" type: batch repeat: 10 keep_seed: false until: (cy
 experiment "Graphical Simulation" type: gui {
 	parameter "AADT (veh/day):" var: LD_AADT;
 	parameter "EV Proportion of Fleet (%):" var: EV_PROPORTION;
-	parameter "Station Spacing (miles):" var: STATION_SPACING;
-	parameter "Range Anxiety Buffer (miles):" var: RANGE_ANXIETY_BUFFER;
-	parameter "Charge Plugin Delay (minutes):" var: CHARGE_PLUGIN_DELAY;
+	parameter "Station Spacing (mi):" var: STATION_SPACING;
+	parameter "Range Anxiety Buffer (mi):" var: RANGE_ANXIETY_BUFFER;
 	parameter "Test Cycle Adjustment Factor (%)" var: TEST_CYCLE_ADJ_FACTOR;
-	parameter "Plugs and Power (kWh):" var: PLUG_POWERS;
-	parameter "% SOC to Leave Station:" var: DEPARTING_SOC;
+	parameter "Plugs and Power (kW):" var: PLUG_POWERS;
+	parameter "SOC to Leave Station (%):" var: DEPARTING_SOC;
+	parameter "Min Vehicle Efficiency (mi/kWh):" var: MIN_VEHICLE_EFFICIENCY;
+	parameter "Max Vehicle Efficiency (mi/kWh):" var: MAX_VEHICLE_EFFICIENCY;
 	parameter "Vehicle Models:" var: VEHICLE_MODELS;
-	parameter "Vehicle Efficiencies (mi/kWh):" var: VEHICLE_EFFICIENCIES;
+	parameter "Vehicle Weights:" var: VEHICLE_WEIGHTS;
 	parameter "Vehicle Ranges (mi):" var: VEHICLE_RANGES;
-	parameter "Vehicle Max Desired Power (kW):" var: VEHICLE_MAX_DESIRED_CHARGE;
+	parameter "Vehicle Max Desired Powers (kW):" var: VEHICLE_MAX_DESIRED_CHARGE;
+	parameter "Min C-Rate Slope:" var: MIN_C_RATE_SLOPE;
+	parameter "Max C-Rate Slope:" var: MAX_C_RATE_SLOPE;
 
 	output {
 		// Rolling average of total plug power being provided
@@ -342,7 +405,7 @@ experiment "Graphical Simulation" type: gui {
 			species vehicle aspect: base;
 		}
 		// Tables for browsing species statuses
-		inspect "vehicle_browser" value: vehicle type: table;
-		inspect "charger_browser" value: charger type: table;
+//		inspect "vehicle_browser" value: vehicle type: table;
+//		inspect "charger_browser" value: charger type: table;
 	}
 }
