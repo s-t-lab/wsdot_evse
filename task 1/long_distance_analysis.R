@@ -54,12 +54,12 @@ clusterEvalQ(cl, {
   library(DBI)
   library(RPostgres)
   main_con = dbConnect(
-    Postgres(),
-    host = Sys.getenv("MAIN_HOST"),
-    dbname = Sys.getenv("MAIN_DB"),
-    user = Sys.getenv("MAIN_USER"),
-    password = Sys.getenv("MAIN_PWD"),
-    port = Sys.getenv("MAIN_PORT")
+        Postgres(),
+        host="cp84-chargeval.coavcn49hnn6.us-west-2.rds.amazonaws.com",
+        dbname="chargeval_prod",
+        user="tundrafire",
+        password="!-RJhpyp522R5u",
+        port="5432"
   )
   NULL
 })
@@ -69,7 +69,7 @@ progress <- function(n) setTxtProgressBar(pb, n)
 opts <- list(progress = progress)
 
 # Calculate shortest path geometry for each OD and save
-foreach(row=1:100, .options.snow=opts, .noexport="main_con", .packages=c("DBI","RPostgres")) %dopar% {
+foreach(row=1:nrow(all_trips), .options.snow=opts, .noexport="main_con", .packages=c("DBI","RPostgres")) %dopar% {
   insert_query <-
     paste0(
       'INSERT INTO od_sp_geom_wsdot (trip_count, bev_count, od_pairs, geom)
