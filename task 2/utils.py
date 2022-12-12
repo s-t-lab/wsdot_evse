@@ -60,8 +60,57 @@ def update_latest_file(fname_base, folder=""):
                 latest_fname = fname
     
     print("latest file: '{0:s}'".format(latest_fname))
-    
+
     os.popen('cp "{0:s}raw/{1:s}" "{0:s}{2:s}"'.format(folder, latest_fname, fname_base+".csv"))
+
+fips2county = pd.read_csv("config/fips2county_tab.tsv", delimiter="\t", dtype={"CountyFIPS": str})
+fips2county = fips2county.set_index("CountyFIPS")
+
+def get_county_from_countyFIPS(countyFIPS):
+    return fips2county.loc[countyFIPS, "CountyName"]
+
+tract_to_zip = pd.read_csv("config/WA_census_tract_to_zip_code_by_res_ratio.csv", index_col="census_tract", dtype={"zip_code": int})
+
+def create_empty_df(times, census_tracts, name_census_tracts):
+    # create final dataframe and add county and ZIP code column to it
+    multiindex = pd.MultiIndex.from_product([times, census_tracts], names=["time", name_census_tracts])
+    df = pd.DataFrame(index=multiindex, columns=["county", "zip_code"])
+    df["countyFIPS"] = df.index.get_level_values(1).values.astype("U5") #get first 5 characters of the GEOID (== stateFIPS + countyFIPS)
+    df["county"] = df["countyFIPS"].apply(get_county_from_countyFIPS)
+    for census_tract in census_tracts:
+        if census_tract in tract_to_zip.index:
+            zip_code = tract_to_zip.loc[census_tract, "zip_code"]
+            df.loc[(slice(None), census_tract), "zip_code"] = zip_code
+            # df.loc[(slice(None), census_tract), "county"] = search.by_zipcode(zip_code).county.replace(" County", "")
+    return df
+
+def select(L): #median of medians
+    if len(L) < 10:
+        L.sort()
+        return L[int(len(L)/2)]
+    S = []
+    lIndex = 0
+    while lIndex+5 < len(L)-1:
+        S.append(L[lIndex:lIndex+5])
+        lIndex += 5
+    S.append(L[lIndex:])
+    Meds = []
+    for subList in S:
+        # print(subList)
+        Meds.append(select(subList))
+    L2 = select(Meds)
+    L1 = L3 = []
+    for i in L:
+        if i < L2:
+            L1.append(i)
+        if i > L2:
+            L3.append(i)
+    if len(L) < len(L1):
+        return select(L1)
+    elif len(L) > len(L1) + 1:
+        return select(L3)
+    else:
+        return L2
 
 def read_config_file(filename, folder="config/"):
     """
