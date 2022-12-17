@@ -48,9 +48,10 @@ avg_proportion = all_data %>%
     )
 
 # Plot loop curves
-ggplot(data=all_data, aes(x=time, y=volume, col=location)) +
+all_data$Location = all_data$location
+ggplot(data=all_data, aes(x=time, y=volume, col=Location)) +
     geom_line()
-ggplot(data=all_data, aes(x=time, y=proportion, col=location)) +
+ggplot(data=all_data, aes(x=time, y=proportion, col=Location)) +
     geom_line() +
     geom_line(data=avg_proportion, col='black', linetype='dashed', size=.75, aes(x=time, y=proportion)) +
     ggtitle('AADT K-Factor Estimation') +

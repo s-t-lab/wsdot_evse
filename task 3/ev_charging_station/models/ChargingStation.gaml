@@ -14,44 +14,10 @@ global {
 	float step <- 1 #mn;
 
 	// Scenario input parameter defaults
-	float LD_AADT <- 3000.0;
-	float EV_PROPORTION <- 100.0;
-	list<float> PLUG_POWERS <- [
-//		150.0, 150.0,
-//		150.0, 150.0,
-//		150.0, 150.0,
-//		150.0, 150.0,
-//		150.0, 150.0,
-//		150.0, 150.0,
-//		150.0, 150.0,
-//		150.0, 150.0,
-//		150.0, 150.0,
-//		150.0, 150.0,
-//		150.0, 150.0,
-//		150.0, 150.0,
-//		150.0, 150.0,
-//		150.0, 150.0,
-//		150.0, 150.0,
-//		150.0, 150.0,
-//		150.0, 150.0,
-//		150.0, 150.0,
-//		150.0, 150.0,
-//		150.0, 150.0,
-//		150.0, 150.0,
-//		150.0, 150.0,
-//		150.0, 150.0,
-//		150.0, 150.0,
-//		150.0, 150.0,
-//		150.0, 150.0,
-//		150.0, 150.0,
-//		150.0, 150.0,
-//		150.0, 150.0,
-//		150.0, 150.0,
-//		150.0, 150.0,
-//		150.0, 150.0,
-		150.0, 150.0
-//		150.0
-	];
+	float LD_AADT <-1500.0;
+	float EV_PROPORTION <- 10.0;
+	list<float> PLUG_POWERS <- [350.0, 350.0, 50.0, 50.0];
+	bool PLUG_POWERS_FROM_FILE <- false;
 
 	// Other input parameter defaults
 	float STATION_SPACING <- 50.0;
@@ -76,10 +42,14 @@ global {
 //		(112.0/33.7) with_precision 2
 //	]; // MPGe (33.7 kWh per gal)
 	list<float> VEHICLE_RANGES <- [303.0, 275.0, 259.0, 212.0, 320.0, 396.0];
-	list<float> VEHICLE_MAX_DESIRED_CHARGE <- [150.0, 135.0, 55.0, 150.0, 150.0, 250.0];
+//	list<float> VEHICLE_MAX_DESIRED_CHARGE <- [150.0, 135.0, 55.0, 150.0, 150.0, 250.0];
+	list<float> VEHICLE_MAX_DESIRED_CHARGE <- [350.0, 350.0, 350.0, 350.0, 350.0, 350.0];
+
 	list<float> VEHICLE_WEIGHTS <- [1/6, 1/6, 1/6, 1/6, 1/6, 1/6];
-	float MAX_C_RATE_SLOPE <- -2.50;
-	float MIN_C_RATE_SLOPE <- -0.75;
+//	float MAX_C_RATE_SLOPE <- -2.50;
+//	float MIN_C_RATE_SLOPE <- -0.75;
+	float MAX_C_RATE_SLOPE <- -7.50;
+	float MIN_C_RATE_SLOPE <- -7.50;
 	float MIN_VEHICLE_EFFICIENCY <- 63.0 / 33.7;
 	float MAX_VEHICLE_EFFICIENCY <- 112.0 / 33.7;
 
@@ -113,6 +83,9 @@ global {
 	list<float> KFACTOR_TIMES;
 	list<float> KFACTORS;
 	list<float> ARRIVAL_RATES;
+	list<float> REQUIRED_PLUG_PCT;
+	list<float> REQUIRED_PLUG_AADT;
+	list<int> REQUIRED_PLUG_NUMBER;
 
 	// Graphics constants
 	int SPACING <- 5;
@@ -126,10 +99,6 @@ global {
 			float range_depart <- VEHICLE_RANGES[i] * DEPARTING_SOC;
 			STOPPING_PROPORTIONS <- STOPPING_PROPORTIONS + (STATION_SPACING / (range_depart - range_arrive));
 		}
-		create charger number: 1 with:(
-			location: CHARGER_LOC,
-			name: "main_charger"
-		);
 		// Read in data files and construct arrival rate curves
 		file k_factors_file <- csv_file("../data/avg_kfactor.csv");
 		loop i from: 0 to: k_factors_file.contents.rows - 1 {
@@ -137,6 +106,23 @@ global {
 			KFACTORS <- KFACTORS + float(k_factors_file.contents[2,i]);
 			ARRIVAL_RATES <- ARRIVAL_RATES + (LD_AADT * EV_PROPORTION / 100.0 * float(k_factors_file.contents[2,i]) / 5);
 		}
+		// Get number of plugs to meet waiting % standard
+		if PLUG_POWERS_FROM_FILE {
+			file plugs_file <- csv_file("../data/plug_counts.csv");
+			loop i from: 0 to: plugs_file.contents.rows - 1 {
+				if (float(plugs_file.contents[0,i])=EV_PROPORTION and float(plugs_file.contents[1,i])=LD_AADT) {
+					PLUG_POWERS <- [];
+					loop j from: 0 to: int(plugs_file.contents[3,i]) - 1 {
+						PLUG_POWERS <- PLUG_POWERS + 150.0;
+					}
+				}
+			}
+		}
+		// Initialize the charging station and its plugs
+		create charger number: 1 with:(
+			location: CHARGER_LOC,
+			name: "main_charger"
+		);
 	}
 	// Run every simulation step
 	reflex update_metrics {
@@ -153,7 +139,7 @@ global {
 		current_arrival_rate <- ARRIVAL_RATES at int(current_min / 5);
 		rolling_avg_arrival_rate <- rolling_avg_arrival_rate + current_arrival_rate;
 		// Queue length
-		current_queue_length <- float(min(length(vehicle.population) - length(PLUG_POWERS), 0));
+		current_queue_length <- float(max(length(vehicle.population) - length(PLUG_POWERS), 0));
 		rolling_avg_queue_length <- rolling_avg_queue_length + current_queue_length;
 	}
 	// Create new vehicles according to long distance AADT and Time of Day
@@ -171,7 +157,6 @@ global {
 	    		);
     		}
     	}
-
     }
 }
 
@@ -244,7 +229,7 @@ species vehicle {
 		// Initialize y-intercept such that c-rate goes to 0.00 at 100% soc
 		c_rate_intercept <- -c_rate_slope;
 		// Battery capacity kWh based on efficiency and range
-		capacity <- (1 / efficiency) * range; // mi * (kW/mi) = kW
+		capacity <- (1 / efficiency) * range; // mi * (kWh/mi) = kWh
 		// Random uniform draw for remaining energy, assume station is passed if enough range to do so
 		float remaining_distance <- rnd(RANGE_ANXIETY_BUFFER, STATION_SPACING + RANGE_ANXIETY_BUFFER);
 		// Energy to travel that remaining distance depends on the vehicle
@@ -330,10 +315,14 @@ species vehicle {
 
 
 // Batch run multiple 1-day simulations
-experiment "Batch Simulation" type: batch repeat: 10 keep_seed: false until: (cycle > 60 * 24) {
+experiment "Batch Simulation" type: batch repeat: 30 keep_seed: false until: (cycle > 60 * 24) {
+//    parameter "Long Distance AADT (veh/day):" var: LD_AADT among: [30.0, 300.0, 750.0, 1500.0, 2250.0, 3000.0] unit: 'percent of fleet';
+//    parameter "EV Proportion of Fleet (%):" var: EV_PROPORTION among: [1.0, 10.0, 25.0, 50.0, 75.0, 100.0] unit: 'percent of fleet';
+    parameter "Long Distance AADT (veh/day):" var: LD_AADT among: [1500.0] unit: 'percent of fleet';
+    parameter "EV Proportion of Fleet (%):" var: EV_PROPORTION among: [10.0] unit: 'percent of fleet';
     reflex end_of_runs {
 	    int cpt <- 0;
-	    string save_loc <- "./batch_results_" + int(LD_AADT) + "_" + int(EV_PROPORTION);
+	    string save_loc <- "./batch_results/batch_results_" + int(LD_AADT) + "_" + int(EV_PROPORTION);
 	    ask simulations {
 	    	loop i over: self.rolling_avg_arrival_rate {
 	    		save i to: "./" + save_loc + "/time_ar_" + cpt + ".csv" type: text rewrite: false;
@@ -363,6 +352,7 @@ experiment "Graphical Simulation" type: gui {
 	parameter "Range Anxiety Buffer (mi):" var: RANGE_ANXIETY_BUFFER;
 	parameter "Test Cycle Adjustment Factor (%)" var: TEST_CYCLE_ADJ_FACTOR;
 	parameter "Plugs and Power (kW):" var: PLUG_POWERS;
+	parameter "Read Plug Powers from File?:" var: PLUG_POWERS_FROM_FILE;
 	parameter "SOC to Leave Station (%):" var: DEPARTING_SOC;
 	parameter "Min Vehicle Efficiency (mi/kWh):" var: MIN_VEHICLE_EFFICIENCY;
 	parameter "Max Vehicle Efficiency (mi/kWh):" var: MAX_VEHICLE_EFFICIENCY;
